@@ -28,7 +28,7 @@ INJECT_SCRIPT = HOOK_DIR / "inject_facts.py"
 UPDATE_SCRIPT = HOOK_DIR / "update_map.py"
 
 INJECT_TIMEOUT = 30
-UPDATE_TIMEOUT = 60
+UPDATE_TIMEOUT = 180
 
 CMS_SCRIPT_NAMES = ("inject_facts.py", "update_map.py")
 

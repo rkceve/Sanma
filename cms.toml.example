@@ -14,13 +14,21 @@
 inject_model = "claude-haiku-4-5-20251001"
 inject_timeout_sec = 30
 
-# Model used to update the map after each turn (needs reliable structured
-# output). Default: Sonnet 4.6. Haiku tends to invent extra keys here.
-update_model = "claude-sonnet-4-6"
-update_timeout_sec = 45
+# Model used to update the map after each turn. Default: Haiku 4.5.
+#
+# Sonnet 4.6 produces slightly cleaner schema output, but its lower
+# throughput means the update prompt — which embeds the full current map —
+# can exceed our default subprocess timeout for non-trivial maps. Switching
+# to Haiku for this path keeps update latency well within the timeout
+# while preserving schema validity in practice; the strict validation in
+# update_map.py guards against the rare malformed response.
+update_model = "claude-haiku-4-5-20251001"
+update_timeout_sec = 150
 
-# Number of retries on transient model failures (timeouts, etc.). Default: 1.
-update_retry_count = 1
+# Number of retries on transient model failures (timeouts, etc.). Default: 0.
+# Each retry doubles worst-case latency, so we prefer fail-fast over retry
+# storms. The next turn will reattempt automatically.
+update_retry_count = 0
 
 [exclusion]
 # Glob patterns matched against the absolute cwd. If any pattern matches,
@@ -32,10 +40,10 @@ update_retry_count = 1
 skip_cwds = []
 
 [size]
-# Soft cap on total planet count across all suns in a project's map. When
+# Soft cap on total planet count across all suns in a per-chat map. When
 # exceeded, the lowest-mass planets are pruned at update time to keep the
-# prompt size bounded. Set higher to retain more history; lower to keep
-# things lean. Default: 50.
+# prompt size bounded. With chat-per-map storage this cap is rarely hit
+# during a single conversation, but it remains as a safety net.
 soft_planet_limit = 50
 
 [provider]

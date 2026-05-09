@@ -158,11 +158,18 @@ the correlation map populates itself.
 ### Where the map lives
 
 ```
-~/.claude/projects/<cwd-slug>/memory/cms/correlation_map.json
+~/.claude/projects/<cwd-slug>/memory/cms/chats/<session_id>/correlation_map.json
 ```
 
-`<cwd-slug>` is your project directory's path with separators replaced.
-Each project keeps its own map automatically.
+Each Claude Code session gets its own correlation map under a directory
+keyed by both the project (cwd) and the session id. This per-chat layout
+keeps individual maps small — the prompt sent to the lightweight update
+model embeds the full current map, so a per-project map shared across all
+historical conversations would balloon over time and push the model past
+its timeout.
+
+If you want to inspect maps from a previous session, look for the
+`session_id` in `cms.log` or browse the `chats/` directory directly.
 
 ### Logs
 

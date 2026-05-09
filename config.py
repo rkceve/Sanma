@@ -7,8 +7,10 @@ partial overrides are safe.
 Example user config:
 
     [models]
+    # Override to use Sonnet for the update path; trades speed for slightly
+    # cleaner schema output.
     update_model = "claude-sonnet-4-6"
-    update_retry_count = 2
+    update_timeout_sec = 240
 
     [exclusion]
     skip_cwds = ["**/scratch/**", "/tmp/**"]
@@ -17,7 +19,7 @@ Example user config:
 from __future__ import annotations
 
 import os
-import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -26,13 +28,21 @@ CONFIG_PATH = CLAUDE_HOME / "hooks" / "cms" / "cms.toml"
 
 
 # Hardcoded defaults. User overrides via cms.toml are merged on top.
+#
+# Both inject and update use Haiku 4.5 by default. Sonnet 4.6 produces
+# slightly cleaner schema output for the update path, but its slower
+# per-token throughput becomes the dominant constraint as the map grows
+# (the prompt includes the full current map, and Sonnet at ~75 tok/s
+# crosses 60s on maps that are not even particularly large). Haiku
+# completes the same update in ~30s with schema-valid output verified
+# empirically on real-world maps.
 DEFAULTS: dict[str, Any] = {
     "models": {
         "inject_model": "claude-haiku-4-5-20251001",
-        "update_model": "claude-sonnet-4-6",
+        "update_model": "claude-haiku-4-5-20251001",
         "inject_timeout_sec": 30,
-        "update_timeout_sec": 45,
-        "update_retry_count": 1,
+        "update_timeout_sec": 150,
+        "update_retry_count": 0,
     },
     "schema": {
         "forbidden_keys": [
@@ -88,27 +98,11 @@ def _deep_merge(base: dict[str, Any], overrides: dict[str, Any]) -> dict[str, An
     return out
 
 
-def _load_tomllib():
-    if sys.version_info >= (3, 11):
-        import tomllib
-
-        return tomllib
-    try:
-        import tomli  # type: ignore[import-not-found]
-
-        return tomli
-    except ImportError:
-        return None
-
-
 def load(path: Path | None = None) -> dict[str, Any]:
     """Return the merged config dict (defaults + user overrides)."""
     if path is None:
         path = CONFIG_PATH
     if not path.is_file():
-        return DEFAULTS
-    tomllib = _load_tomllib()
-    if tomllib is None:
         return DEFAULTS
     try:
         with open(path, "rb") as f:

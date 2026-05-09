@@ -9,12 +9,11 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import config  # noqa: E402
-
 from _lib import (  # noqa: E402
     call_model,
+    chat_map_dir,
     load_map,
     log,
-    project_cms_dir,
     prune_low_mass_planets,
     read_hook_payload,
     read_last_exchange,
@@ -86,7 +85,8 @@ def main() -> None:
     payload = read_hook_payload()
     cwd = payload.get("cwd") or ""
     transcript_path = payload.get("transcript_path") or ""
-    if not cwd or not transcript_path:
+    session_id = payload.get("session_id") or ""
+    if not cwd or not transcript_path or not session_id:
         return
 
     if should_skip(cwd):
@@ -100,7 +100,7 @@ def main() -> None:
     user_text = user_text[:max_chars]
     assistant_text = assistant_text[:max_chars]
 
-    cms_dir = project_cms_dir(cwd)
+    cms_dir = chat_map_dir(cwd, session_id)
     map_data = load_map(cms_dir)
 
     user_prompt = USER_PROMPT_TEMPLATE.format(
@@ -143,7 +143,7 @@ def main() -> None:
         log_parts = [f"suns={n_suns}", f"planets={n_planets}"]
         if n_pruned:
             log_parts.append(f"pruned={n_pruned}")
-        log(f"update_map: saved {' '.join(log_parts)} cwd={cwd}")
+        log(f"update_map: saved {' '.join(log_parts)} cwd={cwd} sid={session_id[:8]}")
     except Exception as e:
         log(f"update_map: save failed: {e}")
 

@@ -153,9 +153,27 @@ def cwd_to_slug(cwd: str) -> str:
 
 
 def project_cms_dir(cwd: str) -> Path:
-    """Return the per-project CMS data directory, creating it if absent."""
+    """Return the per-project CMS data directory, creating it if absent.
+
+    Legacy v0.1.0 layout — used to hold a single correlation_map.json shared
+    by every session in the cwd. Kept for backward-compat tools and as the
+    parent directory of chat_map_dir().
+    """
     slug = cwd_to_slug(cwd)
     d = PROJECTS_DIR / slug / "memory" / "cms"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def chat_map_dir(cwd: str, session_id: str) -> Path:
+    """Per-chat correlation map directory.
+
+    Each Claude Code session gets its own correlation_map.json under
+    ``<project_cms_dir>/chats/<session_id>/``. This prevents the map from
+    bloating across unrelated conversations and keeps the prompt size
+    bounded for the lightweight model that updates it.
+    """
+    d = project_cms_dir(cwd) / "chats" / session_id
     d.mkdir(parents=True, exist_ok=True)
     return d
 
