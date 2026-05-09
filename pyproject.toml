@@ -1,0 +1,65 @@
+# pyproject.toml — claude-code-cms
+#
+# This file is primarily for declaring development dependencies and tooling
+# configuration. The hooks themselves are not pip-installable — they live in
+# `~/.claude/hooks/cms/` and are wired into Claude Code via `install.py`.
+#
+# To set up a development environment:
+#     pip install -e .[dev]
+#
+# To enable the optional Anthropic SDK provider mode:
+#     pip install -e .[sdk]
+
+[project]
+name = "claude-code-cms"
+version = "0.1.0"
+description = "Structured conversation memory for Claude Code via the hook system."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Ryosuke Kawai" }]
+requires-python = ">=3.11"
+keywords = [
+    "claude-code",
+    "claude",
+    "ai",
+    "memory",
+    "context-management",
+    "hooks",
+    "correlation-map",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff",
+]
+sdk = [
+    "anthropic>=0.30",
+]
+
+[project.urls]
+Homepage = "https://github.com/rkceve/claude-code-cms"
+Issues = "https://github.com/rkceve/claude-code-cms/issues"
+Paper = "https://doi.org/10.5281/zenodo.19354705"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

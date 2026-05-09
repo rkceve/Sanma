@@ -1,0 +1,97 @@
+# =============================================================================
+# Runtime artifacts — never commit
+# =============================================================================
+
+# CMS log contains absolute paths to user's projects.
+cms.log
+
+# Sandbox cwd used to isolate `claude -p` subprocess transcripts.
+# Contents are deleted after each call but the directory itself is created
+# at runtime.
+_sandbox/
+
+# User-specific config (may contain custom model IDs, API keys via env hints,
+# project-specific exclusion patterns). Users copy cms.toml.example -> cms.toml.
+cms.toml
+
+# =============================================================================
+# Python
+# =============================================================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# pytest
+.pytest_cache/
+.cache/
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ruff
+.ruff_cache/
+
+# Distribution / packaging (in case anyone tries to package this)
+build/
+dist/
+*.egg-info/
+*.egg
+wheels/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# =============================================================================
+# IDE / editor
+# =============================================================================
+
+# VS Code (workspace-specific settings should not leak)
+.vscode/
+*.code-workspace
+
+# JetBrains
+.idea/
+
+# Vim / Emacs swap and backup
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# =============================================================================
+# OS / shell
+# =============================================================================
+
+# Direnv local
+.envrc.local
+
+# Local environment overrides
+.env
+.env.local
+.env.*.local

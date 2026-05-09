@@ -1,0 +1,62 @@
+# CMS Hook System — example configuration.
+#
+# To activate, copy this file to `cms.toml` in the same directory and edit
+# the values you want to override. Any keys you omit fall back to the
+# hardcoded defaults in config.py.
+#
+#     cp cms.toml.example cms.toml
+#
+# All keys here are OPTIONAL.
+
+[models]
+# Model used to extract relevant facts from the map (cheap, run on every
+# user prompt). Default: Haiku 4.5.
+inject_model = "claude-haiku-4-5-20251001"
+inject_timeout_sec = 30
+
+# Model used to update the map after each turn (needs reliable structured
+# output). Default: Sonnet 4.6. Haiku tends to invent extra keys here.
+update_model = "claude-sonnet-4-6"
+update_timeout_sec = 45
+
+# Number of retries on transient model failures (timeouts, etc.). Default: 1.
+update_retry_count = 1
+
+[exclusion]
+# Glob patterns matched against the absolute cwd. If any pattern matches,
+# the CMS hooks skip that session entirely. Useful for scratch directories
+# or quick one-off Claude Code invocations you don't want to record.
+#
+# Examples:
+#   skip_cwds = ["**/scratch/**", "/tmp/**", "C:/Temp/**"]
+skip_cwds = []
+
+[size]
+# Soft cap on total planet count across all suns in a project's map. When
+# exceeded, the lowest-mass planets are pruned at update time to keep the
+# prompt size bounded. Set higher to retain more history; lower to keep
+# things lean. Default: 50.
+soft_planet_limit = 50
+
+[provider]
+# How the lightweight model is invoked.
+#
+# - "claude_code_cli" (default): spawns `claude -p` headless. Uses your
+#   existing OAuth/Max session via the Claude Code CLI. No API key needed.
+#   Subject to a CLI bug in transcript persistence — the hooks include a
+#   sandbox-cwd workaround so this is transparent in practice.
+#
+# - "anthropic_sdk": uses the `anthropic` Python SDK directly. Cleaner
+#   (no transcript files, no tab pollution risk). Requires:
+#       pip install anthropic
+#       export ANTHROPIC_API_KEY=sk-ant-...
+mode = "claude_code_cli"
+api_key_env = "ANTHROPIC_API_KEY"
+
+[limits]
+# Maximum size of the cms.log file before it is truncated. Default: 1 MB.
+max_log_bytes = 1_000_000
+
+# Maximum characters per user/assistant message passed to the update model.
+# Longer messages are truncated. Default: 4000.
+max_msg_chars = 4000
