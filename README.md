@@ -7,14 +7,6 @@
 > long-running discussions coherent across compactions, restarts, and project
 > switches.
 
-> ⚠️ **Patent pending — Japan, 2026.**
-> Commercial use (productizing this code, hosting it as a paid service,
-> redistributing it as part of a paid offering, and so on) requires a separate
-> conversation. Please reach out via [@rkcevE](https://x.com/rkcevE) on X
-> or open a GitHub issue first.
-> **Personal use, freelance work, and internal use within an organization
-> are not restricted.**
-
 ---
 
 ## 1. Why this exists
@@ -274,7 +266,7 @@ JSON**. Treat it accordingly:
 
 ## 11. Author
 
-**Ryosuke Kawai** — independent researcher, age 15.
+**Ryosuke Kawai** — independent researcher, 
 
 - X / Twitter: [@rkcevE](https://x.com/rkcevE)
 - Contact: X DM, GitHub issues, or `ryosukekawai1224@gmail.com`
@@ -291,6 +283,14 @@ Active research areas:
 ---
 
 ## 12. Patent context
+
+> ⚠️ **Patent pending — Japan, 2026.**
+> Commercial use (productizing this code, hosting it as a paid service,
+> redistributing it as part of a paid offering, and so on) requires a separate
+> conversation. Please reach out via [@rkcevE](https://x.com/rkcevE) on X
+> or open a GitHub issue first.
+> **Personal use, freelance work, and internal use within an organization
+> are not restricted.**
 
 This repository is a reference implementation of techniques described in
 [*Geometric Convergence for Conversational Context Management: A Distributed
