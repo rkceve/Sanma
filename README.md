@@ -1,4 +1,4 @@
-# claude-code-cms
+# Sanma
 
 > Claude Code that doesn't forget. Persistent project memory across sessions, compactions, and restarts.
 >  Persistent, structured project memory for Claude Code. Two lightweight hooks
