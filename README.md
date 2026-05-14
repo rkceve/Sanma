@@ -1,4 +1,4 @@
-# Sanma
+# Sanma (秋刀魚)
 
 > Claude Code that doesn't forget. Persistent project memory across sessions, compactions, and restarts.
 >  Persistent, structured project memory for Claude Code. Two lightweight hooks
@@ -387,3 +387,7 @@ these areas:
 - Linux and macOS testing (development happens on Windows)
 - Industry collaboration on the underlying paper — please reach out if your
   organization is interested in joint research
+
+  ## 17. Repository Name
+
+  Named after sanma (秋刀魚, Pacific saury) — a fish known for being remembered fondly even after the season ends.
