@@ -1,6 +1,7 @@
 # claude-code-cms
 
-> Persistent, structured project memory for Claude Code. Two lightweight hooks
+> Claude Code that doesn't forget. Persistent project memory across sessions, compactions, and restarts.
+>  Persistent, structured project memory for Claude Code. Two lightweight hooks
 > (Sonnet 4.6 + Haiku 4.5) maintain a per-project knowledge tree on disk and
 > surface the relevant facts back into context on every turn — keeping
 > long-running discussions coherent across compactions, restarts, and project
