@@ -29,20 +29,23 @@ CONFIG_PATH = CLAUDE_HOME / "hooks" / "cms" / "cms.toml"
 
 # Hardcoded defaults. User overrides via cms.toml are merged on top.
 #
-# Both inject and update use Haiku 4.5 by default. Sonnet 4.6 produces
-# slightly cleaner schema output for the update path, but its slower
-# per-token throughput becomes the dominant constraint as the map grows
-# (the prompt includes the full current map, and Sonnet at ~75 tok/s
-# crosses 60s on maps that are not even particularly large). Haiku
-# completes the same update in ~30s with schema-valid output verified
-# empirically on real-world maps.
+# inject_model: Haiku 4.5 — fact extraction is forgiving of small slips,
+# and Haiku is fast enough that we rarely run out of budget here.
+#
+# update_model: Sonnet 4.6 — empirically more reliable at producing
+# schema-valid JSON. Haiku 4.5 was tried as the default in v0.1.1 because
+# it is faster on large maps, but with chat-per-map storage the map stays
+# small per session and Sonnet completes comfortably within the timeout.
+# Haiku also slips schema (uses synonyms like `description`, drops `mass`,
+# etc.) about a third of the time on typical inputs, and the
+# schema-validation step then discards the update, leaving the map frozen.
 DEFAULTS: dict[str, Any] = {
     "models": {
         "inject_model": "claude-haiku-4-5-20251001",
-        "update_model": "claude-haiku-4-5-20251001",
+        "update_model": "claude-sonnet-4-6",
         "inject_timeout_sec": 30,
         "update_timeout_sec": 150,
-        "update_retry_count": 0,
+        "update_retry_count": 1,
     },
     "schema": {
         "forbidden_keys": [

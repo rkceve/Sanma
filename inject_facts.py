@@ -13,13 +13,17 @@ from _lib import (  # noqa: E402
     chat_map_dir,
     emit_additional_context,
     load_map,
+    load_prompt,
     log,
     map_to_text,
     read_hook_payload,
     should_skip,
 )
 
-INJECT_SYSTEM_PROMPT = """\
+# Fallback system prompt used only when prompts/inject.md is missing.
+# The shipped default lives in prompts/inject.md — edit that to tune the
+# model's behavior without changing code.
+FALLBACK_SYSTEM_PROMPT = """\
 You retrieve relevant context from a tree-structured project memory.
 
 Input has two parts:
@@ -63,7 +67,7 @@ def main() -> None:
 
     response = call_model(
         haiku_input,
-        system_prompt=INJECT_SYSTEM_PROMPT,
+        system_prompt=load_prompt("inject", fallback=FALLBACK_SYSTEM_PROMPT),
         model=config.get("models", "inject_model"),
         timeout_sec=config.get("models", "inject_timeout_sec"),
     )

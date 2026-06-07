@@ -13,6 +13,7 @@ from _lib import (  # noqa: E402
     call_model,
     chat_map_dir,
     load_map,
+    load_prompt,
     log,
     prune_low_mass_planets,
     read_hook_payload,
@@ -22,7 +23,10 @@ from _lib import (  # noqa: E402
     validate_map_schema,
 )
 
-UPDATE_SYSTEM_PROMPT = (
+# Fallback system prompt used only when prompts/update.md is missing.
+# The shipped default lives in prompts/update.md — edit that to tune
+# the model's behavior without changing code.
+FALLBACK_SYSTEM_PROMPT = (
     "You output JSON only. The ONLY allowed keys are: "
     "version, suns, id, title, planets, mass, satellites, text. "
     "Forbidden keys (do NOT use): label, name, description, summary, "
@@ -32,22 +36,39 @@ UPDATE_SYSTEM_PROMPT = (
     "No prose, no markdown fences, no commentary."
 )
 
+# The user prompt carries the task description and update rules in addition
+# to the dynamic map/exchange. Empirically, models follow these rules more
+# reliably when they appear in the user message than in the system prompt.
+# Schema discipline stays in the system prompt (prompts/update.md).
 USER_PROMPT_TEMPLATE = """\
 TASK: update the correlation map below given the new exchange.
 
 ALLOWED KEYS: version, suns, id, title, planets, mass, satellites, text.
 NO OTHER KEYS. If you are tempted to add `label`, `description`, `summary`,
-`branches`, `note`, `status`, `formula`, `parameters` — DO NOT. Express
-that information inside the `text` field of a satellite instead.
+`branches`, `note`, `status`, `formula`, `parameters`, `topic`, `facts`,
+`scope`, `target`, `verify` — DO NOT. Express that information inside the
+`text` field of a satellite instead.
 
 UPDATE RULES (apply all that fit):
-1. Continuation of existing planet's topic → increment that planet's `mass` by 1.
-2. New factual detail under existing planet → add as a new satellite.
-3. New subtopic under existing sun → add as a new planet (mass=1).
-4. Entirely new top-level domain → add a new sun with one initial planet (mass=1).
-5. Trivial exchange (acknowledgment, clarification, off-topic) → return the input map unchanged.
-6. Never delete or rename existing nodes. Only ADD or INCREMENT mass.
-7. Generate fresh ids: scan existing ids of each type and pick the next integer (sun-N, planet-N, sat-N).
+1. Supersede stale facts: if the new exchange contradicts an existing
+   satellite (config changed, plan rejected, number corrected, decision
+   reversed), REPLACE that satellite's text with the new truth. If a fact
+   is cancelled, DELETE the satellite.
+2. Detect user pivots: when the user shifts direction ("switching to X",
+   "Y instead", "abandoning Z"), supersede old-direction satellites.
+3. Exclude discussion artifacts: NEVER make satellites from questions,
+   option menus, proposals ending in "?", or assistant turn-ending
+   prompts to the user. Only persistent facts.
+4. Continuation of an existing planet's topic → increment that planet's
+   `mass` by 1.
+5. New factual detail under an existing planet → add as a new satellite.
+6. New subtopic under an existing sun → add as a new planet (mass=1).
+7. Entirely new top-level domain → add a new sun with one initial planet.
+8. Trivial exchange (acknowledgment, off-topic) → return the input map
+   unchanged.
+9. Generate fresh ids: scan existing ids of each type and pick the next
+   integer (sun-N, planet-N, sat-N).
+10. Each satellite.text MUST be ≤ 200 characters. Split long facts.
 
 CURRENT MAP:
 {map_json}
@@ -55,7 +76,7 @@ CURRENT MAP:
 NEW EXCHANGE:
 USER: {user_text}
 
-ASSISTANT: {assistant_text}
+A: {assistant_text}
 
 Output the complete updated map as pure JSON. Begin with `{{` and end with `}}`.
 """
@@ -111,7 +132,7 @@ def main() -> None:
 
     response = call_model(
         user_prompt,
-        system_prompt=UPDATE_SYSTEM_PROMPT,
+        system_prompt=load_prompt("update", fallback=FALLBACK_SYSTEM_PROMPT),
         model=config.get("models", "update_model"),
         timeout_sec=config.get("models", "update_timeout_sec"),
         retry_count=config.get("models", "update_retry_count", default=1),

@@ -185,6 +185,8 @@ The hooks early-exit when this environment variable is set.
 
 ## 7. Configuration
 
+### Numeric and structural settings (`cms.toml`)
+
 Copy `cms.toml.example` to `cms.toml` and edit. All keys are optional;
 unspecified ones fall back to defaults.
 
@@ -199,6 +201,33 @@ What you can override:
   SDK directly; requires `ANTHROPIC_API_KEY`)
 
 See the comments inside `cms.toml.example` for detail.
+
+### Behavior tuning via prompts (`prompts/`)
+
+The hook models (Haiku/Sonnet) do **not** read the user's `CLAUDE.md`.
+Their **system prompts** are instead controlled by two markdown files
+shipped with this repo:
+
+```
+prompts/
+├── update.md     # system prompt for the Stop hook (schema discipline for the map updater)
+└── inject.md     # system prompt for the UserPromptSubmit hook (fact retriever)
+```
+
+These are the editable equivalent of a `CLAUDE.md` for the hook models.
+Edit them to tune model behavior without touching Python. Changes take
+effect on the next hook fire; no restart needed.
+
+Note: the task-level rules for the update hook (when to replace stale
+facts, when to add new planets, the 200-character cap on satellite
+text, etc.) live in `USER_PROMPT_TEMPLATE` inside `update_map.py`,
+because empirically the model follows those rules more reliably when
+they appear in the user message than in the system prompt. Edit them
+there if you want to change the update policy.
+
+If the prompt files are missing (e.g., a partial install), the hooks
+fall back to a minimal hardcoded prompt embedded in the Python so the
+system still runs.
 
 ---
 

@@ -61,6 +61,7 @@ PROJECTS_DIR = CLAUDE_HOME / "projects"
 HOOK_ROOT = CLAUDE_HOME / "hooks" / "cms"
 LOG_PATH = HOOK_ROOT / "cms.log"
 SANDBOX_DIR = HOOK_ROOT / "_sandbox"
+PROMPTS_DIR = HOOK_ROOT / "prompts"
 
 RECURSION_GUARD_ENV = "CMS_HOOK_ACTIVE"
 SESSION_DISABLE_ENV = "CMS_DISABLE"
@@ -163,6 +164,26 @@ def project_cms_dir(cwd: str) -> Path:
     d = PROJECTS_DIR / slug / "memory" / "cms"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def load_prompt(name: str, fallback: str = "") -> str:
+    """Load a system-prompt template from ``HOOK_ROOT/prompts/<name>.md``.
+
+    These markdown files are the editable equivalent of a CLAUDE.md for the
+    hook models (Haiku/Sonnet) — users can tune the prompts without
+    touching Python.
+
+    Returns ``fallback`` if the file is missing or unreadable, so a fresh
+    install without the prompts directory still works.
+    """
+    path = PROMPTS_DIR / f"{name}.md"
+    if not path.is_file():
+        return fallback
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except Exception as e:
+        log(f"load_prompt({name}): failed: {e}")
+        return fallback
 
 
 def chat_map_dir(cwd: str, session_id: str) -> Path:
