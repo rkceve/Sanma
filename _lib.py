@@ -310,6 +310,237 @@ def map_to_text(map_data: dict[str, Any]) -> str:
     return "\n".join(lines) if lines else "(empty)"
 
 
+def _next_free_id(prefix: str, existing: set[str]) -> str:
+    """Return the lowest ``<prefix>-N`` not present in ``existing``."""
+    n = 1
+    while f"{prefix}-{n}" in existing:
+        n += 1
+    return f"{prefix}-{n}"
+
+
+def _collect_ids(map_data: dict[str, Any], prefix: str) -> set[str]:
+    ids: set[str] = set()
+    for sun in map_data.get("suns", []):
+        if prefix == "sun":
+            ids.add(str(sun.get("id", "")))
+            continue
+        for planet in sun.get("planets", []):
+            if prefix == "planet":
+                ids.add(str(planet.get("id", "")))
+                continue
+            for sat in planet.get("satellites", []):
+                ids.add(str(sat.get("id", "")))
+    return ids
+
+
+def ensure_ids(map_data: dict[str, Any]) -> dict[str, Any]:
+    """Fill in missing ``id`` fields (sun-N / planet-N / sat-N) in place.
+
+    Maps written by older versions (or hand-edited) may lack ids on some
+    nodes; the v0.2 diff-operation layer addresses nodes by id, so every
+    node must have one. Existing ids are never changed.
+    """
+    for prefix, nodes in (
+        ("sun", [s for s in map_data.get("suns", [])]),
+        (
+            "planet",
+            [p for s in map_data.get("suns", []) for p in s.get("planets", [])],
+        ),
+        (
+            "sat",
+            [
+                sat
+                for s in map_data.get("suns", [])
+                for p in s.get("planets", [])
+                for sat in p.get("satellites", [])
+            ],
+        ),
+    ):
+        existing = {str(n["id"]) for n in nodes if n.get("id")}
+        for node in nodes:
+            if not node.get("id"):
+                new_id = _next_free_id(prefix, existing)
+                node["id"] = new_id
+                existing.add(new_id)
+    return map_data
+
+
+def map_to_indexed_text(map_data: dict[str, Any]) -> tuple[str, list[dict[str, Any]]]:
+    """Render the map with a global ``[N]`` number on every satellite.
+
+    Returns ``(text, flat)`` where ``flat[i]`` describes satellite number
+    ``i + 1``: keys ``text``, ``planet_title``, ``sun_title``, ``id``.
+    Used by search_map.py so the selector model can answer with bare
+    numbers and the caller can resolve them back to verbatim texts.
+    """
+    lines: list[str] = []
+    flat: list[dict[str, Any]] = []
+    n = 0
+    for sun in map_data.get("suns", []):
+        lines.append(f"SUN: {sun.get('title', '?')}")
+        for planet in sun.get("planets", []):
+            mass = planet.get("mass", 0)
+            lines.append(f"  PLANET (mass={mass}): {planet.get('title', '?')}")
+            for sat in planet.get("satellites", []):
+                n += 1
+                lines.append(f"    [{n}] {sat.get('text', '')}")
+                flat.append(
+                    {
+                        "text": sat.get("text", ""),
+                        "planet_title": planet.get("title", "?"),
+                        "sun_title": sun.get("title", "?"),
+                        "id": sat.get("id"),
+                    }
+                )
+    return ("\n".join(lines) if lines else "(empty)", flat)
+
+
+# ---------------------------------------------------------------------------
+# Diff operations — the v0.2 update path
+# ---------------------------------------------------------------------------
+
+OP_TYPES = {"add_sat", "replace_sat", "delete_sat", "add_planet", "add_sun", "inc_mass"}
+
+
+def _find_planet(map_data: dict[str, Any], planet_id: str) -> dict[str, Any] | None:
+    for sun in map_data.get("suns", []):
+        for planet in sun.get("planets", []):
+            if planet.get("id") == planet_id:
+                return planet
+    return None
+
+
+def _find_sat(map_data: dict[str, Any], sat_id: str) -> tuple[dict[str, Any], int] | None:
+    for sun in map_data.get("suns", []):
+        for planet in sun.get("planets", []):
+            for i, sat in enumerate(planet.get("satellites", [])):
+                if sat.get("id") == sat_id:
+                    return planet, i
+    return None
+
+
+def apply_ops(
+    map_data: dict[str, Any],
+    ops: list[Any],
+    max_ops: int | None = None,
+    max_sat_chars: int | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[tuple[Any, str]]]:
+    """Validate and apply diff operations to a copy of the map.
+
+    The model never constructs map nodes itself — it only requests
+    operations, and this function builds the nodes, generates fresh ids,
+    and rejects anything that violates the invariants. Returns
+    ``(new_map, applied, rejected)`` where ``rejected`` pairs each bad op
+    with a human-readable reason (fed back to the model on retry).
+    """
+    import copy
+
+    if max_ops is None:
+        max_ops = config.get("limits", "max_ops_per_turn", default=10)
+    if max_sat_chars is None:
+        max_sat_chars = config.get("limits", "max_sat_chars", default=200)
+
+    new_map = ensure_ids(copy.deepcopy(map_data))
+    applied: list[dict[str, Any]] = []
+    rejected: list[tuple[Any, str]] = []
+
+    for op in ops:
+        if len(applied) >= max_ops:
+            rejected.append((op, f"op limit ({max_ops} per turn) exceeded"))
+            continue
+        if not isinstance(op, dict):
+            rejected.append((op, "op is not an object"))
+            continue
+        kind = op.get("op")
+        if kind not in OP_TYPES:
+            rejected.append(
+                (op, f"unknown op: {kind!r}; allowed: {', '.join(sorted(OP_TYPES))}")
+            )
+            continue
+
+        if kind in ("add_sat", "replace_sat"):
+            text = op.get("text")
+            if not isinstance(text, str) or not text.strip():
+                rejected.append((op, "text is missing or empty"))
+                continue
+            if len(text) > max_sat_chars:
+                rejected.append((op, f"text exceeds {max_sat_chars} chars"))
+                continue
+
+        if kind == "add_sat":
+            planet = _find_planet(new_map, op.get("planet", ""))
+            if planet is None:
+                rejected.append((op, f"planet not found: {op.get('planet')!r}"))
+                continue
+            sat_id = _next_free_id("sat", _collect_ids(new_map, "sat"))
+            planet.setdefault("satellites", []).append({"id": sat_id, "text": op["text"]})
+
+        elif kind == "replace_sat":
+            found = _find_sat(new_map, op.get("sat", ""))
+            if found is None:
+                rejected.append((op, f"satellite not found: {op.get('sat')!r}"))
+                continue
+            planet, i = found
+            planet["satellites"][i]["text"] = op["text"]
+
+        elif kind == "delete_sat":
+            found = _find_sat(new_map, op.get("sat", ""))
+            if found is None:
+                rejected.append((op, f"satellite not found: {op.get('sat')!r}"))
+                continue
+            planet, i = found
+            del planet["satellites"][i]
+
+        elif kind == "add_planet":
+            title = op.get("title")
+            if not isinstance(title, str) or not title.strip():
+                rejected.append((op, "title is missing or empty"))
+                continue
+            sun = next(
+                (s for s in new_map.get("suns", []) if s.get("id") == op.get("sun")), None
+            )
+            if sun is None:
+                rejected.append((op, f"sun not found: {op.get('sun')!r}"))
+                continue
+            planet_id = _next_free_id("planet", _collect_ids(new_map, "planet"))
+            sun.setdefault("planets", []).append(
+                {"id": planet_id, "title": title, "mass": 1, "satellites": []}
+            )
+
+        elif kind == "add_sun":
+            title = op.get("title")
+            planet_title = op.get("planet_title")
+            if not isinstance(title, str) or not title.strip():
+                rejected.append((op, "title is missing or empty"))
+                continue
+            if not isinstance(planet_title, str) or not planet_title.strip():
+                rejected.append((op, "planet_title is missing or empty"))
+                continue
+            sun_id = _next_free_id("sun", _collect_ids(new_map, "sun"))
+            planet_id = _next_free_id("planet", _collect_ids(new_map, "planet"))
+            new_map.setdefault("suns", []).append(
+                {
+                    "id": sun_id,
+                    "title": title,
+                    "planets": [
+                        {"id": planet_id, "title": planet_title, "mass": 1, "satellites": []}
+                    ],
+                }
+            )
+
+        elif kind == "inc_mass":
+            planet = _find_planet(new_map, op.get("planet", ""))
+            if planet is None:
+                rejected.append((op, f"planet not found: {op.get('planet')!r}"))
+                continue
+            mass = planet.get("mass", 0)
+            planet["mass"] = (mass if isinstance(mass, int) else 0) + 1
+
+        applied.append(op)
+
+    return new_map, applied, rejected
+
+
 def prune_low_mass_planets(
     map_data: dict[str, Any], soft_limit: int
 ) -> dict[str, Any]:

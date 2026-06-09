@@ -1,11 +1,11 @@
 # Sanma (秋刀魚)
 
 > Claude Code that doesn't forget. Persistent project memory across sessions, compactions, and restarts.
->  Persistent, structured project memory for Claude Code. Two lightweight hooks
-> (Sonnet 4.6 + Haiku 4.5) maintain a per-project knowledge tree on disk and
-> surface the relevant facts back into context on every turn — keeping
-> long-running discussions coherent across compactions, restarts, and project
-> switches.
+>  Persistent, structured conversation memory for Claude Code. A Stop hook
+> (Sonnet 4.6) distills each exchange into a per-chat knowledge tree on disk;
+> a lightweight index injected each turn lets the main model pull stored
+> facts verbatim, on demand — keeping long-running discussions coherent
+> across compactions, restarts, and project switches.
 
 ---
 
@@ -22,26 +22,28 @@ Long-running conversations with Claude Code share three failure modes:
   you rejected, the open question you flagged — get buried in the chat
   history and become unrecoverable.
 
-`claude-code-cms` writes each turn into a **structured correlation map** on
-local disk and re-injects only the facts that matter into the next turn's
-context. Claude itself doesn't have to know the system exists; it just keeps
-remembering the right things.
+Sanma distills each turn into a **structured correlation map** on local
+disk, shows the main model a one-glance index of what is stored, and lets
+it pull the exact facts it needs — verbatim, the moment they matter.
 
 ---
 
 ## 2. What it does
 
 Two hooks are registered in your Claude Code `settings.json` and fire
-automatically every turn.
+automatically every turn, plus one on-demand search command.
 
-| Hook | When it fires | What it does | Model |
+| Component | When it fires | What it does | Model |
 |---|---|---|---|
-| `Stop` | Right after Claude finishes a response | Reads the latest exchange and updates the correlation map (adds new nodes or increments mass on existing ones) | Claude Sonnet 4.6 |
-| `UserPromptSubmit` | The moment you submit a new prompt | Compares your prompt against the existing map and pulls 3–5 relevant facts | Claude Haiku 4.5 |
+| `Stop` hook | Right after Claude finishes a response | Reads the latest exchange and emits **diff operations** (add / replace / delete facts); code validates and applies them to the map | Claude Sonnet 4.6 |
+| `UserPromptSubmit` hook | The moment you submit a new prompt | Injects a compact **topic index** of this chat's map (titles only) — **no model call**, ~0 latency | — |
+| `search_map.py` | When the main model decides it needs a stored fact | Selects matching satellites for an explicit query; their texts are returned **verbatim** | Claude Haiku 4.5 |
 
-Extracted facts are passed to the main session as `additionalContext`. Your
-primary model (Opus, Sonnet, whatever you use) doesn't need to be aware of
-the mechanism — it just sees the facts as part of its prompt.
+This is a pull architecture (v0.2). Earlier versions pushed a model-written
+summary of the map into every turn; in practice that summary accumulated
+stale facts and editorial opinions, and the main model wasted effort
+arguing with it. Now the main model — the only party that knows what it
+needs — sees the table of contents and pulls the verbatim facts on demand.
 
 ---
 
@@ -60,10 +62,10 @@ SUN: top-level topic
     └── SAT: ...
 ```
 
-Each planet's **mass** equals the number of satellites accumulated under it,
-which proxies how deeply the user has engaged with that subtopic. The
-fact-extraction hook prefers high-mass planets when picking what to inject
-next, so long-standing concerns aren't forgotten.
+Each planet's **mass** grows as the conversation keeps returning to that
+subtopic, which proxies how deeply the user has engaged with it. Mass is
+shown in the injected topic index, so the main model can see at a glance
+which subjects this chat has history on.
 
 ---
 
@@ -73,24 +75,31 @@ next, so long-standing concerns aren't forgotten.
 [user submits prompt]
     │
     ↓
-[UserPromptSubmit hook]
-    │  Haiku 4.5 reads the map + the prompt, extracts relevant facts
+[UserPromptSubmit hook — no model call]
+    │  renders the map's topic index (sun/planet titles + fact counts)
     ↓
-[facts injected as additionalContext for the main session]
+[index injected as additionalContext, with the search command embedded]
     │
     ↓
-[main model produces a response]
+[main model works on the response]
+    │  if a stored fact would change the answer, it runs:
+    │    python search_map.py --map <path> "<query>"
+    │  Haiku 4.5 picks satellite numbers; texts are printed VERBATIM
+    ↓
+[main model finishes the response]
     │
     ↓
 [Stop hook]
-    │  Sonnet 4.6 reads the latest exchange, updates the JSON map
+    │  Sonnet 4.6 reads the latest exchange, emits {"ops": [...]} —
+    │  add_sat / replace_sat / delete_sat / add_planet / add_sun / inc_mass.
+    │  Code validates each op (existing ids only, <=200 chars, <=10 ops)
+    │  and applies the survivors. One retry with the validation errors.
     ↓
 [correlation_map.json written atomically to disk]
 ```
 
-Both hooks run in a sandboxed subprocess, so the latency footprint on your
-primary session is small (~0.5–1.5s before the response starts; another 1–2s
-in the background after it ends).
+The pre-turn injection is deterministic and adds no perceptible latency.
+The Stop-hook model call runs after your response is already on screen.
 
 ---
 
@@ -210,20 +219,22 @@ shipped with this repo:
 
 ```
 prompts/
-├── update.md     # system prompt for the Stop hook (schema discipline for the map updater)
-└── inject.md     # system prompt for the UserPromptSubmit hook (fact retriever)
+├── update.md     # Stop hook: what counts as a FACT + the diff-op rules
+└── search.md     # search_map.py: how the selector picks satellite numbers
 ```
 
 These are the editable equivalent of a `CLAUDE.md` for the hook models.
 Edit them to tune model behavior without touching Python. Changes take
 effect on the next hook fire; no restart needed.
 
-Note: the task-level rules for the update hook (when to replace stale
-facts, when to add new planets, the 200-character cap on satellite
-text, etc.) live in `USER_PROMPT_TEMPLATE` inside `update_map.py`,
-because empirically the model follows those rules more reliably when
-they appear in the user message than in the system prompt. Edit them
-there if you want to change the update policy.
+Note that prompts are only the first of three constraint layers. The
+other two live in code and hold regardless of what the model does:
+every operation is validated before it is applied (unknown ids, texts
+over 200 characters, and more than 10 ops per turn are rejected), and
+the output formats make misbehavior structurally impossible — the
+updater can only request operations (the map itself is assembled by
+code), and the searcher can only pick numbers (fact texts are printed
+verbatim, so it cannot rephrase or invent them).
 
 If the prompt files are missing (e.g., a partial install), the hooks
 fall back to a minimal hardcoded prompt embedded in the Python so the
@@ -233,11 +244,11 @@ system still runs.
 
 ## 8. Cost
 
-Each turn fires two model calls (one Haiku, one Sonnet). Both run against
-your existing Claude Pro / Max token allowance — no separate API key is
-needed unless you opt into the SDK provider mode. The lightweight models
-don't meaningfully starve your main Opus session, but they do consume
-additional tokens per turn. To economize, set exclusion patterns in
+Each turn fires one Sonnet call (the Stop hook, after your response is
+done), plus a Haiku call only on the turns where the main model actually
+searches the map. All calls run against your existing Claude Pro / Max
+token allowance — no separate API key is needed unless you opt into the
+SDK provider mode. To economize further, set exclusion patterns in
 `cms.toml`, or prefix individual sessions with `CMS_DISABLE=1`.
 
 ---
@@ -256,13 +267,14 @@ dedicated sandbox directory (`~/.claude/hooks/cms/_sandbox`), then delete
 the transcript by `session_id` after the call returns. This is a workaround
 that becomes unnecessary once Anthropic fixes the upstream bug.
 
-### Schema-violation discards
+### Rejected operations
 
-Sonnet occasionally returns JSON with non-canonical keys (`label`,
-`description`, etc.) instead of the expected `title`, `planets`. The hook
-runs strict schema validation and **discards** any update that violates
-it, preserving the previous map. The next turn usually catches up; if
-this happens persistently, check `cms.log`.
+The updater occasionally emits operations that fail validation (unknown
+ids, overlong texts). Invalid ops are **rejected individually** and the
+valid ones still apply; if every op fails, the hook retries once with
+the validation errors attached, then leaves the map untouched for that
+turn. Rejections are recorded in `cms.log` — check there if the map
+seems to stop growing.
 
 ### Per-project isolation
 

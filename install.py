@@ -27,8 +27,10 @@ HOOK_DIR = CLAUDE_HOME / "hooks" / "cms"
 INJECT_SCRIPT = HOOK_DIR / "inject_facts.py"
 UPDATE_SCRIPT = HOOK_DIR / "update_map.py"
 
-INJECT_TIMEOUT = 30
-UPDATE_TIMEOUT = 180
+# v0.2: inject is deterministic (no model call) — 10s is generous.
+# update runs up to two model attempts of update_timeout_sec (90s) each.
+INJECT_TIMEOUT = 10
+UPDATE_TIMEOUT = 200
 
 CMS_SCRIPT_NAMES = ("inject_facts.py", "update_map.py")
 
@@ -55,12 +57,14 @@ def _write_settings(data: dict[str, Any]) -> None:
     os.replace(tmp, SETTINGS_PATH)
 
 
-def _has_cms_hook(entries: list[dict[str, Any]], script_basename: str) -> bool:
+def _find_cms_hook(
+    entries: list[dict[str, Any]], script_basename: str
+) -> dict[str, Any] | None:
     for entry in entries:
         for hook in entry.get("hooks", []):
             if script_basename in hook.get("command", ""):
-                return True
-    return False
+                return hook
+    return None
 
 
 def _ensure_hook(
@@ -72,7 +76,12 @@ def _ensure_hook(
     settings.setdefault("hooks", {})
     settings["hooks"].setdefault(event, [])
     entries: list[dict[str, Any]] = settings["hooks"][event]
-    if _has_cms_hook(entries, script_path.name):
+    existing = _find_cms_hook(entries, script_path.name)
+    if existing is not None:
+        # Already installed — refresh the timeout if a new version changed it.
+        if existing.get("timeout") != timeout:
+            existing["timeout"] = timeout
+            return True
         return False
     entries.append(
         {

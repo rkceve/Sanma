@@ -9,26 +9,25 @@
 # All keys here are OPTIONAL.
 
 [models]
-# Model used to extract relevant facts from the map (cheap, run on every
-# user prompt). Default: Haiku 4.5.
+# Model used by search_map.py to pick which stored facts answer a query.
+# Runs only when the main model decides to search — NOT on every turn.
+# Its output is just an array of numbers; the fact texts are printed
+# verbatim by code. Default: Haiku 4.5.
 inject_model = "claude-haiku-4-5-20251001"
-inject_timeout_sec = 30
+inject_timeout_sec = 20
 
-# Model used to update the map after each turn. Default: Haiku 4.5.
-#
-# Sonnet 4.6 produces slightly cleaner schema output, but its lower
-# throughput means the update prompt — which embeds the full current map —
-# can exceed our default subprocess timeout for non-trivial maps. Switching
-# to Haiku for this path keeps update latency well within the timeout
-# while preserving schema validity in practice; the strict validation in
-# update_map.py guards against the rare malformed response.
-update_model = "claude-haiku-4-5-20251001"
-update_timeout_sec = 150
+# Model used by the Stop hook to emit diff operations after each turn.
+# This is the decision center of the system: it judges which facts are
+# new, superseded, or cancelled. Output is a small ops list (not the
+# whole map), so Sonnet's lower throughput is no longer a timeout risk.
+# Default: Sonnet 4.6.
+update_model = "claude-sonnet-4-6"
+update_timeout_sec = 90
 
-# Number of retries on transient model failures (timeouts, etc.). Default: 0.
-# Each retry doubles worst-case latency, so we prefer fail-fast over retry
-# storms. The next turn will reattempt automatically.
-update_retry_count = 0
+# Number of retries on transient model failures (timeouts, etc.).
+# Validation failures additionally get one retry with the errors
+# attached, independent of this setting. Default: 1.
+update_retry_count = 1
 
 [exclusion]
 # Glob patterns matched against the absolute cwd. If any pattern matches,
@@ -68,3 +67,11 @@ max_log_bytes = 1_000_000
 # Maximum characters per user/assistant message passed to the update model.
 # Longer messages are truncated. Default: 4000.
 max_msg_chars = 4000
+
+# v0.2 bounds, enforced in code regardless of what the models output.
+# Maximum diff operations applied per turn (the rest are rejected).
+max_ops_per_turn = 10
+# Maximum characters per satellite text (longer texts are rejected).
+max_sat_chars = 200
+# Maximum facts returned by one search_map.py invocation.
+max_search_results = 8

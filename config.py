@@ -29,22 +29,21 @@ CONFIG_PATH = CLAUDE_HOME / "hooks" / "cms" / "cms.toml"
 
 # Hardcoded defaults. User overrides via cms.toml are merged on top.
 #
-# inject_model: Haiku 4.5 — fact extraction is forgiving of small slips,
-# and Haiku is fast enough that we rarely run out of budget here.
+# inject_model: Haiku 4.5 — used by search_map.py for on-demand lookup.
+# As of v0.2 the UserPromptSubmit hook makes NO model call (it injects a
+# deterministic topic index only); Haiku's job is reduced to picking
+# satellite numbers for an explicit query, which is fast and forgiving.
 #
-# update_model: Sonnet 4.6 — empirically more reliable at producing
-# schema-valid JSON. Haiku 4.5 was tried as the default in v0.1.1 because
-# it is faster on large maps, but with chat-per-map storage the map stays
-# small per session and Sonnet completes comfortably within the timeout.
-# Haiku also slips schema (uses synonyms like `description`, drops `mass`,
-# etc.) about a third of the time on typical inputs, and the
-# schema-validation step then discards the update, leaving the map frozen.
+# update_model: Sonnet 4.6 — the Stop hook is the decision center: it
+# judges which facts are superseded, contradicted, or new, and emits diff
+# operations. Output shrank from the full map to a small ops list in
+# v0.2, so Sonnet's slower throughput no longer risks timeouts.
 DEFAULTS: dict[str, Any] = {
     "models": {
         "inject_model": "claude-haiku-4-5-20251001",
         "update_model": "claude-sonnet-4-6",
-        "inject_timeout_sec": 30,
-        "update_timeout_sec": 150,
+        "inject_timeout_sec": 20,
+        "update_timeout_sec": 90,
         "update_retry_count": 1,
     },
     "schema": {
@@ -87,6 +86,11 @@ DEFAULTS: dict[str, Any] = {
     "limits": {
         "max_log_bytes": 1_000_000,
         "max_msg_chars": 4000,
+        # v0.2 diff-operation and search bounds, enforced in code (not
+        # by prompt): see _lib.apply_ops and search_map.py.
+        "max_ops_per_turn": 10,
+        "max_sat_chars": 200,
+        "max_search_results": 8,
     },
 }
 

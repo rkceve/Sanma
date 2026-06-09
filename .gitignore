@@ -14,6 +14,14 @@ _sandbox/
 # project-specific exclusion patterns). Users copy cms.toml.example -> cms.toml.
 cms.toml
 
+# Map backups made before bulk migrations. These contain conversation-derived
+# user data and must never be committed.
+_backup/
+
+# Scratch files from one-off migrations.
+_migration_paths.json
+_paths_oneline.txt
+
 # =============================================================================
 # Python
 # =============================================================================
