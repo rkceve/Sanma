@@ -419,6 +419,57 @@ def _find_sat(map_data: dict[str, Any], sat_id: str) -> tuple[dict[str, Any], in
     return None
 
 
+MAX_INLINE_SATS = 10
+
+
+def _check_inline_sats(op: dict[str, Any]) -> str:
+    """Validate the optional ``sats`` list on add_planet/add_sun.
+
+    Returns an error string (op-level rejection) or "" if acceptable.
+    Individual texts are validated later in _fill_inline_sats so one bad
+    text doesn't sink the whole node.
+    """
+    sats = op.get("sats")
+    if sats is None:
+        return ""
+    if not isinstance(sats, list):
+        return "sats must be a list of strings"
+    if len(sats) > MAX_INLINE_SATS:
+        return f"sats list too long (max {MAX_INLINE_SATS})"
+    return ""
+
+
+def _fill_inline_sats(
+    map_data: dict[str, Any],
+    planet: dict[str, Any],
+    op: dict[str, Any],
+    max_sat_chars: int,
+    rejected: list[tuple[Any, str]],
+) -> None:
+    """Attach the op's inline ``sats`` texts to a freshly created planet.
+
+    This exists because the model cannot reference a node created in the
+    same batch (ids are code-assigned): a new planet's initial facts must
+    ride along inside the creating op. Invalid texts are rejected
+    individually; the planet and its valid texts survive.
+    """
+    for text in op.get("sats") or []:
+        if not isinstance(text, str) or not text.strip():
+            rejected.append(
+                ({"op": "add_sat", "planet": planet["id"], "text": text},
+                 "inline sat text is missing or empty")
+            )
+            continue
+        if len(text) > max_sat_chars:
+            rejected.append(
+                ({"op": "add_sat", "planet": planet["id"], "text": text},
+                 f"inline sat text exceeds {max_sat_chars} chars")
+            )
+            continue
+        sat_id = _next_free_id("sat", _collect_ids(map_data, "sat"))
+        planet["satellites"].append({"id": sat_id, "text": text})
+
+
 def apply_ops(
     map_data: dict[str, Any],
     ops: list[Any],
@@ -502,10 +553,14 @@ def apply_ops(
             if sun is None:
                 rejected.append((op, f"sun not found: {op.get('sun')!r}"))
                 continue
+            err = _check_inline_sats(op)
+            if err:
+                rejected.append((op, err))
+                continue
             planet_id = _next_free_id("planet", _collect_ids(new_map, "planet"))
-            sun.setdefault("planets", []).append(
-                {"id": planet_id, "title": title, "mass": 1, "satellites": []}
-            )
+            planet = {"id": planet_id, "title": title, "mass": 1, "satellites": []}
+            sun.setdefault("planets", []).append(planet)
+            _fill_inline_sats(new_map, planet, op, max_sat_chars, rejected)
 
         elif kind == "add_sun":
             title = op.get("title")
@@ -516,17 +571,17 @@ def apply_ops(
             if not isinstance(planet_title, str) or not planet_title.strip():
                 rejected.append((op, "planet_title is missing or empty"))
                 continue
+            err = _check_inline_sats(op)
+            if err:
+                rejected.append((op, err))
+                continue
             sun_id = _next_free_id("sun", _collect_ids(new_map, "sun"))
             planet_id = _next_free_id("planet", _collect_ids(new_map, "planet"))
+            planet = {"id": planet_id, "title": planet_title, "mass": 1, "satellites": []}
             new_map.setdefault("suns", []).append(
-                {
-                    "id": sun_id,
-                    "title": title,
-                    "planets": [
-                        {"id": planet_id, "title": planet_title, "mass": 1, "satellites": []}
-                    ],
-                }
+                {"id": sun_id, "title": title, "planets": [planet]}
             )
+            _fill_inline_sats(new_map, planet, op, max_sat_chars, rejected)
 
         elif kind == "inc_mass":
             planet = _find_planet(new_map, op.get("planet", ""))

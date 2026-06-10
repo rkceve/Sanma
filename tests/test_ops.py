@@ -135,6 +135,73 @@ def test_apply_ops_does_not_mutate_input(sample_map):
     assert sample_map == original
 
 
+def test_add_planet_with_inline_sats(sample_map):
+    """Batch-reference fix: a new planet's initial facts ride along in `sats`,
+    because the model cannot know the id of a node created in the same batch."""
+    ops = [
+        {
+            "op": "add_planet",
+            "sun": "sun-1",
+            "title": "Input handling",
+            "sats": ["Polling rate fixed at 500Hz", "Use raw HID, not driver events"],
+        }
+    ]
+    new_map, applied, rejected = _lib.apply_ops(sample_map, ops)
+    assert len(applied) == 1 and not rejected
+    planet = new_map["suns"][0]["planets"][-1]
+    assert planet["title"] == "Input handling"
+    texts = [s["text"] for s in planet["satellites"]]
+    assert texts == ["Polling rate fixed at 500Hz", "Use raw HID, not driver events"]
+    ids = [s["id"] for s in planet["satellites"]]
+    assert ids == ["sat-4", "sat-5"]  # code-assigned, collision-free
+
+
+def test_add_sun_with_inline_sats(sample_map):
+    ops = [
+        {
+            "op": "add_sun",
+            "title": "Compression",
+            "planet_title": "Run 6",
+            "sats": ["Run 6 uses 500K params"],
+        }
+    ]
+    new_map, applied, rejected = _lib.apply_ops(sample_map, ops)
+    assert len(applied) == 1 and not rejected
+    sun = new_map["suns"][-1]
+    assert sun["planets"][0]["satellites"][0]["text"] == "Run 6 uses 500K params"
+
+
+def test_inline_sats_validated_individually(sample_map):
+    """A bad inline text is rejected alone; the planet and valid texts survive."""
+    ops = [
+        {
+            "op": "add_planet",
+            "sun": "sun-1",
+            "title": "Input handling",
+            "sats": ["valid fact", "x" * 201, ""],
+        }
+    ]
+    new_map, applied, rejected = _lib.apply_ops(sample_map, ops)
+    assert len(applied) == 1
+    assert len(rejected) == 2  # the overlong and the empty text
+    planet = new_map["suns"][0]["planets"][-1]
+    assert [s["text"] for s in planet["satellites"]] == ["valid fact"]
+
+
+def test_inline_sats_list_too_long_rejected(sample_map):
+    ops = [
+        {
+            "op": "add_planet",
+            "sun": "sun-1",
+            "title": "Bulk",
+            "sats": [f"fact {i}" for i in range(11)],
+        }
+    ]
+    new_map, applied, rejected = _lib.apply_ops(sample_map, ops)
+    assert not applied and len(rejected) == 1
+    assert len(new_map["suns"][0]["planets"]) == 2  # nothing added
+
+
 def test_reject_non_dict_and_empty_text(sample_map):
     ops = [
         "not a dict",

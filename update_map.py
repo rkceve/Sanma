@@ -57,10 +57,13 @@ Allowed operations:
   {"op": "add_sat", "planet": "<planet-id>", "text": "<fact, <=200 chars>"}
   {"op": "replace_sat", "sat": "<sat-id>", "text": "<corrected fact>"}
   {"op": "delete_sat", "sat": "<sat-id>"}
-  {"op": "add_planet", "sun": "<sun-id>", "title": "<subtopic>"}
-  {"op": "add_sun", "title": "<new domain>", "planet_title": "<first subtopic>"}
+  {"op": "add_planet", "sun": "<sun-id>", "title": "<subtopic>", "sats": ["<fact>", ...]}
+  {"op": "add_sun", "title": "<new domain>", "planet_title": "<first subtopic>",
+   "sats": ["<fact>", ...]}
   {"op": "inc_mass", "planet": "<planet-id>"}
 If the exchange changes nothing, output {"ops": []}.
+Ids are assigned by the system; you cannot reference a node created in
+this same batch — put a new node's initial facts in its "sats" array.
 
 Rules:
 1. If the new exchange contradicts or supersedes an existing satellite,
@@ -85,6 +88,9 @@ Output the JSON ops object now. The ONLY valid values for "op" are:
 add_sat, replace_sat, delete_sat, add_planet, add_sun, inc_mass.
 Do not invent other op names (no "update", "add_satellite", "edit_satellite").
 Reference satellites as "sat": "<sat-id>" and planets as "planet": "<planet-id>".
+add_sat may only target a planet-id that exists in CURRENT MAP. To create
+a new planet (or sun) together with its first facts, put the fact strings
+in that op's "sats" array — never a separate add_sat to the new node.
 
 Store only FACTS: things that would still be true if the conversation
 ended right now (decisions made, constraints stated, numbers measured,

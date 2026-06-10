@@ -12,10 +12,16 @@ Allowed operations:
   {"op": "add_sat", "planet": "<planet-id>", "text": "<fact, <=200 chars>"}
   {"op": "replace_sat", "sat": "<sat-id>", "text": "<corrected fact>"}
   {"op": "delete_sat", "sat": "<sat-id>"}
-  {"op": "add_planet", "sun": "<sun-id>", "title": "<subtopic>"}
-  {"op": "add_sun", "title": "<new domain>", "planet_title": "<first subtopic>"}
+  {"op": "add_planet", "sun": "<sun-id>", "title": "<subtopic>", "sats": ["<fact>", ...]}
+  {"op": "add_sun", "title": "<new domain>", "planet_title": "<first subtopic>", "sats": ["<fact>", ...]}
   {"op": "inc_mass", "planet": "<planet-id>"}
 If the exchange changes nothing worth remembering, output {"ops": []}.
+
+CRITICAL — ids are assigned by the system, never by you. You CANNOT
+reference a node created in this same batch (you don't know its id).
+A new planet's or sun's initial facts must ride along in its "sats"
+array (up to 10 strings); never emit a separate add_sat pointing at a
+planet that does not yet exist in CURRENT MAP.
 
 Rules:
 1. Supersede, don't accumulate: if the new exchange contradicts or
